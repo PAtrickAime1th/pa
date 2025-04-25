@@ -14,128 +14,6 @@ app.use(express.json());
 // Auth routes
 app.use('/api/auth', require('./routes/auth'));
 
-// CRUD for attempts
-app.post('/api/attempts', async (req, res) => {
-  const { user_id, quiz_id, score } = req.body;
-  try {
-    const [results] = await pool.execute(
-      'INSERT INTO attempts (user_id, quiz_id, score) VALUES (?, ?, ?)',
-      [user_id, quiz_id, score]
-    );
-    res.status(201).json({ message: 'Attempt created successfully', id: results.insertId });
-  } catch (err) {
-    console.error('Error inserting attempt: ', err);
-    res.status(500).json({ error: 'Failed to insert attempt' });
-  }
-});
-
-app.get('/api/attempts', async (req, res) => {
-  try {
-    const [rows] = await pool.execute('SELECT * FROM attempts');
-    res.status(200).json(rows);
-  } catch (err) {
-    console.error('Error fetching attempts: ', err);
-    res.status(500).json({ error: 'Failed to fetch attempts' });
-  }
-});
-
-app.get('/api/attempts/:id', async (req, res) => {
-  const { id } = req.params;
-  try {
-    const [rows] = await pool.execute('SELECT * FROM attempts WHERE id = ?', [id]);
-    if (rows.length === 0) return res.status(404).json({ error: 'Attempt not found' });
-    res.status(200).json(rows[0]);
-  } catch (err) {
-    console.error('Error fetching attempt: ', err);
-    res.status(500).json({ error: 'Failed to fetch attempt' });
-  }
-});
-
-app.put('/api/attempts/:id', async (req, res) => {
-  const { id } = req.params;
-  const { score } = req.body;
-  try {
-    const [results] = await pool.execute('UPDATE attempts SET score = ? WHERE id = ?', [score, id]);
-    if (results.affectedRows === 0) return res.status(404).json({ error: 'Attempt not found' });
-    res.status(200).json({ message: 'Attempt updated successfully' });
-  } catch (err) {
-    console.error('Error updating attempt: ', err);
-    res.status(500).json({ error: 'Failed to update attempt' });
-  }
-});
-
-app.delete('/api/attempts/:id', async (req, res) => {
-  const { id } = req.params;
-  try {
-    const [results] = await pool.execute('DELETE FROM attempts WHERE id = ?', [id]);
-    if (results.affectedRows === 0) return res.status(404).json({ error: 'Attempt not found' });
-    res.status(200).json({ message: 'Attempt deleted successfully' });
-  } catch (err) {
-    console.error('Error deleting attempt: ', err);
-    res.status(500).json({ error: 'Failed to delete attempt' });
-  }
-});
-
-// CRUD for options
-app.post('/api/options', async (req, res) => {
-  const { question_id, text, is_correct } = req.body;
-  try {
-    const [result] = await pool.execute(
-      'INSERT INTO options (question_id, text, is_correct) VALUES (?, ?, ?)',
-      [question_id, text, is_correct]
-    );
-    res.status(201).json({ id: result.insertId, question_id, text, is_correct });
-  } catch (err) {
-    res.status(500).json({ error: 'Error creating option', message: err.message });
-  }
-});
-
-app.get('/api/options', async (req, res) => {
-  try {
-    const [rows] = await pool.execute('SELECT * FROM options');
-    res.json(rows);
-  } catch (err) {
-    res.status(500).json({ error: 'Error fetching options', message: err.message });
-  }
-});
-
-app.get('/api/options/:id', async (req, res) => {
-  const { id } = req.params;
-  try {
-    const [rows] = await pool.execute('SELECT * FROM options WHERE id = ?', [id]);
-    if (rows.length === 0) return res.status(404).json({ error: 'Not found' });
-    res.json(rows[0]);
-  } catch (err) {
-    res.status(500).json({ error: 'Error fetching option', message: err.message });
-  }
-});
-
-app.put('/api/options/:id', async (req, res) => {
-  const { id } = req.params;
-  const { question_id, text, is_correct } = req.body;
-  try {
-    const [result] = await pool.execute(
-      'UPDATE options SET question_id = ?, text = ?, is_correct = ? WHERE id = ?',
-      [question_id, text, is_correct, id]
-    );
-    if (result.affectedRows === 0) return res.status(404).json({ error: 'Not found' });
-    res.json({ id, question_id, text, is_correct });
-  } catch (err) {
-    res.status(500).json({ error: 'Error updating option', message: err.message });
-  }
-});
-
-app.delete('/api/options/:id', async (req, res) => {
-  const { id } = req.params;
-  try {
-    const [result] = await pool.execute('DELETE FROM options WHERE id = ?', [id]);
-    if (result.affectedRows === 0) return res.status(404).json({ error: 'Not found' });
-    res.sendStatus(204);
-  } catch (err) {
-    res.status(500).json({ error: 'Error deleting option', message: err.message });
-  }
-});
-
 // CRUD for questions
 app.post('/api/questions', async (req, res) => {
   const { quiz_id, text } = req.body;
@@ -159,42 +37,41 @@ app.get('/api/questions', async (req, res) => {
   }
 });
 
-app.get('/api/questions/:id', async (req, res) => {
-  const { id } = req.params;
-  try {
-    const [rows] = await pool.execute('SELECT * FROM questions WHERE id = ?', [id]);
-    if (rows.length === 0) return res.status(404).json({ error: 'Not found' });
-    res.json(rows[0]);
-  } catch (err) {
-    res.status(500).json({ error: 'Error fetching question', message: err.message });
-  }
-});
+app.get('/api/quizzes/:id', async (req, res) => {
+    const { id } = req.params;
+  
+    try {
+      // Get the quiz
+      const [quizRows] = await pool.execute('SELECT * FROM quizzes WHERE id = ?', [id]);
+      if (quizRows.length === 0) return res.status(404).json({ error: 'Quiz not found' });
+  
+      const quiz = quizRows[0];
+  
+      // Get questions for the quiz
+      const [questionRows] = await pool.execute('SELECT * FROM questions WHERE quiz_id = ?', [id]);
+  
+      // For each question, get its options
+      const questionsWithOptions = await Promise.all(
+        questionRows.map(async (question) => {
+          const [options] = await pool.execute('SELECT * FROM options WHERE question_id = ?', [question.id]);
+          return {
+            ...question,
+            options: options,
+          };
+        })
+      );
+  
+      quiz.questions = questionsWithOptions;
+  
+      res.json(quiz);
+    } catch (err) {
+      console.error('Error fetching quiz:', err);
+      res.status(500).json({ error: 'Error fetching quiz', message: err.message });
+    }
+  });
+  
 
-app.put('/api/questions/:id', async (req, res) => {
-  const { id } = req.params;
-  const { quiz_id, text } = req.body;
-  try {
-    const [result] = await pool.execute(
-      'UPDATE questions SET quiz_id = ?, text = ? WHERE id = ?',
-      [quiz_id, text, id]
-    );
-    if (result.affectedRows === 0) return res.status(404).json({ error: 'Not found' });
-    res.json({ id, quiz_id, text });
-  } catch (err) {
-    res.status(500).json({ error: 'Error updating question', message: err.message });
-  }
-});
 
-app.delete('/api/questions/:id', async (req, res) => {
-  const { id } = req.params;
-  try {
-    const [result] = await pool.execute('DELETE FROM questions WHERE id = ?', [id]);
-    if (result.affectedRows === 0) return res.status(404).json({ error: 'Not found' });
-    res.sendStatus(204);
-  } catch (err) {
-    res.status(500).json({ error: 'Error deleting question', message: err.message });
-  }
-});
 
 // CRUD for quizzes
 app.post('/api/quizzes', async (req, res) => {
@@ -248,18 +125,51 @@ app.put('/api/quizzes/:id', async (req, res) => {
     res.status(500).json({ error: 'Internal Server Error', message: err.message });
   }
 });
-
-app.delete('/api/quizzes/:id', async (req, res) => {
-  const quizId = req.params.id;
+// check
+app.post('/api/quizzes/:id/submit', async (req, res) => {
   try {
-    const [result] = await pool.execute('DELETE FROM quizzes WHERE id = ?', [quizId]);
-    if (result.affectedRows === 0) return res.status(404).json({ error: 'Quiz not found' });
-    res.sendStatus(204);
-  } catch (err) {
-    console.error('Error deleting quiz:', err);
-    res.status(500).json({ error: 'Internal Server Error', message: err.message });
+    const quizId = req.params.id;
+    const userAnswers = req.body.answers; // { questionId: selectedOptionId }
+
+    // Fetch all the questions for this quiz
+    const [questions] = await pool.execute(
+      'SELECT * FROM questions WHERE quiz_id = ?',
+      [quizId]
+    );
+
+    let score = 0;
+    const correctAnswers = [];
+
+    // Calculate the score and find the correct answers
+    for (let question of questions) {
+      const [options] = await pool.execute(
+        'SELECT * FROM options WHERE question_id = ?',
+        [question.id]
+      );
+
+      // Find the correct option for this question
+      const correctOption = options.find(option => option.is_correct);
+      const userAnswer = userAnswers[question.id];
+
+      // Check if the user's answer is correct
+      if (userAnswer === correctOption.id) {
+        score++;
+        correctAnswers.push(correctOption.id);
+      }
+    }
+
+    // Send response with the score, correct answers, and win status
+    res.json({
+      score: score,
+      correctAnswers: correctAnswers, // Array of correct answers (option IDs)
+      win: score === questions.length, // Check if the user answered all questions correctly
+    });
+  } catch (error) {
+    console.error('Error processing quiz submission:', error);
+    res.status(500).send('Error submitting quiz');
   }
 });
+
 
 // Health check
 app.get('/api/health', (req, res) => {
